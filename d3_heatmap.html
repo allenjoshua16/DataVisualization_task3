@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global Terrorism Heatmap</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        h1 {
+            text-align: center;
+            color: #2d3748;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #718096;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+
+        .controls-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        #map {
+            width: 100%;
+            height: 550px;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            overflow: hidden;
+            background: #f7fafc;
+        }
+
+        .country {
+            stroke: #fff;
+            stroke-width: 0.5;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .country:hover {
+            stroke: #2d3748;
+            stroke-width: 2;
+            filter: brightness(0.9);
+        }
+
+        .tooltip {
+            position: absolute;
+            padding: 12px 16px;
+            background: rgba(45, 55, 72, 0.95);
+            color: white;
+            border-radius: 8px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 14px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            max-width: 250px;
+        }
+
+        .tooltip strong {
+            color: #fbbf24;
+            font-size: 16px;
+        }
+
+        .legend {
+            padding: 20px;
+            background: #f7fafc;
+            border-radius: 10px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .legend-title {
+            font-weight: bold;
+            margin-bottom: 12px;
+            color: #2d3748;
+            font-size: 16px;
+        }
+
+        .legend-scale {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .legend-gradient {
+            flex: 1;
+            height: 20px;
+            border-radius: 5px;
+            background: linear-gradient(to right, #fff5f5, #fed7d7, #fc8181, #e53e3e, #c53030, #7f1d1d);
+        }
+
+        .legend-labels {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 5px;
+            font-size: 12px;
+            color: #4a5568;
+        }
+
+        .slider-container {
+            padding: 20px;
+            background: #f7fafc;
+            border-radius: 10px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .slider-label {
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #2d3748;
+            font-size: 16px;
+            text-align: center;
+        }
+
+        .year-display {
+            font-size: 32px;
+            color: #667eea;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        #yearSlider {
+            width: 100%;
+            height: 8px;
+            border-radius: 5px;
+            outline: none;
+            background: linear-gradient(to right, #e2e8f0, #667eea);
+            cursor: pointer;
+        }
+
+        #yearSlider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.5);
+            transition: all 0.3s ease;
+        }
+
+        #yearSlider::-webkit-slider-thumb:hover {
+            background: #764ba2;
+            transform: scale(1.2);
+        }
+
+        #yearSlider::-moz-range-thumb {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.5);
+        }
+
+        .stats {
+            margin-top: 20px;
+            text-align: center;
+            color: #4a5568;
+            font-size: 14px;
+        }
+
+        .zoom-controls {
+            position: absolute;
+            top: 80px;
+            right: 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 10;
+        }
+
+        .zoom-btn {
+            width: 40px;
+            height: 40px;
+            background: white;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 20px;
+            font-weight: bold;
+            color: #667eea;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .zoom-btn:hover {
+            background: #667eea;
+            color: white;
+            transform: scale(1.1);
+        }
+
+        .zoom-btn:active {
+            transform: scale(0.95);
+        }
+
+        .map-container {
+            position: relative;
+        }
+
+        .upload-section {
+            margin-bottom: 25px;
+            padding: 20px;
+            background: #edf2f7;
+            border-radius: 10px;
+            border: 2px dashed #cbd5e0;
+            text-align: center;
+        }
+
+        .upload-label {
+            font-weight: bold;
+            color: #2d3748;
+            margin-bottom: 10px;
+            display: block;
+        }
+
+        input[type="file"] {
+            padding: 10px;
+            border: 1px solid #cbd5e0;
+            border-radius: 5px;
+            background: white;
+        }
+
+        .loading {
+            text-align: center;
+            color: #667eea;
+            font-size: 18px;
+            padding: 40px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1> Global Terrorism Heatmap</h1>
+        <p class="subtitle">Interactive visualization of terrorist incidents worldwide</p>
+        
+        <div class="controls-row">
+            <div class="legend">
+                <div class="legend-title"> Incident Count Legend</div>
+                <div class="legend-scale">
+                    <div class="legend-gradient"></div>
+                </div>
+                <div class="legend-labels">
+                    <span>0</span>
+                    <span id="maxIncidents">Loading...</span>
+                </div>
+            </div>
+
+            <div class="slider-container">
+                <div class="slider-label">Select Year</div>
+                <div class="year-display" id="yearDisplay">1970</div>
+                <input type="range" id="yearSlider" min="1970" max="2020" value="1970" step="1">
+                <div class="stats" id="stats">Select a dataset to begin</div>
+            </div>
+        </div>
+
+        <div class="map-container">
+            <div id="map"></div>
+            <div class="zoom-controls">
+                <button class="zoom-btn" id="zoomIn" title="Zoom In">+</button>
+                <button class="zoom-btn" id="zoomOut" title="Zoom Out">−</button>
+                <button class="zoom-btn" id="zoomReset" title="Reset Zoom">⟲</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="tooltip" id="tooltip"></div>
+
+    <script>
+        // Global variables
+        let terrorismData = [];
+        let worldData = null;
+        const width = 960;
+        const height = 500;
+
+        // Setup SVG
+        const svg = d3.select("#map")
+            .append("svg")
+            .attr("width", width)
+            .attr("height", height);
+
+        // Create a group for zoom/pan
+        const g = svg.append("g");
+
+        const projection = d3.geoMercator()
+            .scale(150)
+            .translate([width / 2, height / 1.5]);
+
+        const path = d3.geoPath().projection(projection);
+
+        // Setup zoom behavior
+        const zoom = d3.zoom()
+            .scaleExtent([1, 8])  // Min and max zoom levels
+            .on("zoom", function(event) {
+                g.attr("transform", event.transform);
+            });
+
+        svg.call(zoom);
+
+        // Zoom control buttons
+        document.getElementById('zoomIn').addEventListener('click', function() {
+            svg.transition().duration(500).call(zoom.scaleBy, 1.5);
+        });
+
+        document.getElementById('zoomOut').addEventListener('click', function() {
+            svg.transition().duration(500).call(zoom.scaleBy, 0.67);
+        });
+
+        document.getElementById('zoomReset').addEventListener('click', function() {
+            svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity);
+        });
+
+        // Color scale
+        const colorScale = d3.scaleSequential()
+            .interpolator(d3.interpolateReds);
+
+        // Tooltip
+        const tooltip = d3.select("#tooltip");
+
+        // Sample world GeoJSON data (simplified)
+        const sampleWorldData = {
+            "type": "FeatureCollection",
+            "features": []
+        };
+
+        // ============================================
+        // DATASET PATH CONFIGURATION
+        // ============================================
+        const DATASET_PATH = 'region_05_clean.csv';
+        // ============================================
+
+        // Auto-load dataset on page load
+        window.addEventListener('load', function() {
+            loadDataFromPath(DATASET_PATH);
+        });
+
+        // Load data from file path
+        function loadDataFromPath(filePath) {
+            document.getElementById('stats').textContent = 'Loading dataset...';
+            
+            fetch(filePath)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`Failed to load file: ${response.statusText}`);
+                    }
+                    return response.text();
+                })
+                .then(csv => {
+                    terrorismData = d3.csvParse(csv);
+                    console.log(`✓ Successfully loaded ${terrorismData.length} records from ${filePath}`);
+                    initializeVisualization();
+                })
+                .catch(error => {
+                    console.error('Error loading data:', error);
+                    document.getElementById('stats').textContent = 
+                        `Error: Could not auto-load dataset. Please upload manually.`;
+                    console.log(`Failed to load from path: ${filePath}`);
+                    console.log('Tip: Make sure the file path is correct and you are running a local server.');
+                });
+        }
+
+        // Handle direct file upload (kept as backup option)
+
+        // Initialize visualization with sample data if no file uploaded
+        function initializeVisualization() {
+            // Get year range from data
+            const years = terrorismData.map(d => +d.iyear).filter(y => !isNaN(y));
+            const minYear = d3.min(years) || 1970;
+            const maxYear = d3.max(years) || 2020;
+
+            // Update slider
+            const slider = document.getElementById('yearSlider');
+            slider.min = minYear;
+            slider.max = maxYear;
+            slider.value = maxYear;
+            document.getElementById('yearDisplay').textContent = maxYear;
+
+            // Load world map data
+            loadWorldMap();
+        }
+
+        // Load world GeoJSON
+        function loadWorldMap() {
+            // Try multiple sources
+            const sources = [
+                "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json",
+                "https://raw.githubusercontent.com/johan/world.geo.json/master/countries.geo.json"
+            ];
+
+            tryLoadWorld(0);
+
+            function tryLoadWorld(index) {
+                if (index >= sources.length) {
+                    console.log("All sources failed, using alternative visualization");
+                    createAlternativeMap();
+                    return;
+                }
+
+                fetch(sources[index])
+                    .then(response => {
+                        if (!response.ok) throw new Error('Failed to fetch');
+                        return response.json();
+                    })
+                    .then(data => {
+                        // Handle TopoJSON format
+                        if (data.type === "Topology") {
+                            worldData = topojson.feature(data, data.objects.countries);
+                        } else {
+                            worldData = data;
+                        }
+                        updateMap();
+                    })
+                    .catch(error => {
+                        console.log(`Source ${index + 1} failed, trying next...`);
+                        tryLoadWorld(index + 1);
+                    });
+            }
+        }
+
+        function createBasicMap() {
+            // Fallback: create simple circles for countries
+            const selectedYear = +document.getElementById('yearSlider').value;
+            const yearData = terrorismData.filter(d => +d.iyear === selectedYear);
+            
+            const countryData = d3.rollup(
+                yearData,
+                v => v.length,
+                d => d.country_txt
+            );
+
+            const maxCount = d3.max(Array.from(countryData.values())) || 1;
+            colorScale.domain([0, maxCount]);
+            document.getElementById('maxIncidents').textContent = maxCount;
+
+            // Create a grid-based visualization
+            const countries = Array.from(countryData).sort((a, b) => b[1] - a[1]);
+            const cols = 15;
+            const cellSize = Math.min(width / cols, 35);
+
+            svg.selectAll("*").remove();
+
+            // Recreate group for zoom
+            const newG = svg.append("g");
+
+            newG.selectAll("rect")
+                .data(countries)
+                .join("rect")
+                .attr("x", (d, i) => (i % cols) * cellSize + 10)
+                .attr("y", (d, i) => Math.floor(i / cols) * cellSize + 10)
+                .attr("width", cellSize - 2)
+                .attr("height", cellSize - 2)
+                .attr("fill", d => colorScale(d[1]))
+                .attr("rx", 3)
+                .on("mouseover", function(event, d) {
+                    d3.select(this).attr("stroke", "#2d3748").attr("stroke-width", 2);
+                    tooltip.style("opacity", 1)
+                        .html(`<strong>${d[0]}</strong><br>Incidents: ${d[1]}`)
+                        .style("left", (event.pageX + 10) + "px")
+                        .style("top", (event.pageY - 28) + "px");
+                })
+                .on("mouseout", function() {
+                    d3.select(this).attr("stroke", "none");
+                    tooltip.style("opacity", 0);
+                });
+
+            // Update stats
+            const totalIncidents = yearData.length;
+            const countriesAffected = countryData.size;
+            document.getElementById('stats').textContent = 
+                `${totalIncidents} incidents across ${countriesAffected} countries in ${selectedYear}`;
+        }
+
+        function createAlternativeMap() {
+            console.log("Using alternative visualization method");
+            createBasicMap();
+        }
+
+        function updateMap() {
+            const selectedYear = +document.getElementById('yearSlider').value;
+            document.getElementById('yearDisplay').textContent = selectedYear;
+
+            // Filter data by year
+            const yearData = terrorismData.filter(d => +d.iyear === selectedYear);
+
+            // Aggregate by country
+            const countryMap = d3.rollup(
+                yearData,
+                v => v.length,
+                d => d.country_txt
+            );
+
+            // Update color scale domain
+            const maxCount = d3.max(Array.from(countryMap.values())) || 1;
+            colorScale.domain([0, maxCount]);
+            document.getElementById('maxIncidents').textContent = maxCount;
+
+            // Update stats
+            const totalIncidents = yearData.length;
+            const countriesAffected = countryMap.size;
+            document.getElementById('stats').textContent = 
+                `${totalIncidents} incidents across ${countriesAffected} countries in ${selectedYear}`;
+
+            // Draw map
+            if (worldData) {
+                g.selectAll(".country")
+                    .data(worldData.features)
+                    .join("path")
+                    .attr("class", "country")
+                    .attr("d", path)
+                    .attr("fill", d => {
+                        const countryName = d.properties.name;
+                        const count = countryMap.get(countryName) || 0;
+                        return count > 0 ? colorScale(count) : "#e2e8f0";
+                    })
+                    .on("mouseover", function(event, d) {
+                        const countryName = d.properties.name;
+                        const count = countryMap.get(countryName) || 0;
+                        
+                        tooltip.style("opacity", 1)
+                            .html(`<strong>${countryName}</strong><br>Incidents: ${count}`)
+                            .style("left", (event.pageX + 10) + "px")
+                            .style("top", (event.pageY - 28) + "px");
+                    })
+                    .on("mousemove", function(event) {
+                        tooltip.style("left", (event.pageX + 10) + "px")
+                            .style("top", (event.pageY - 28) + "px");
+                    })
+                    .on("mouseout", function() {
+                        tooltip.style("opacity", 0);
+                    });
+            }
+        }
+
+        // Year slider event listener
+        document.getElementById('yearSlider').addEventListener('input', function() {
+            if (worldData) {
+                updateMap();
+            } else {
+                createBasicMap();
+            }
+        });
+
+        // Initialize with sample data for demonstration
+        // In production, wait for user to upload CSV
+        document.getElementById('stats').textContent = 'Please upload a terrorism dataset CSV file';
+    </script>
+</body>
+</html>

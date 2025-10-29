@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Top 10 Terrorist Groups</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 40px 20px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    #container {
+      background: white;
+      border-radius: 15px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      padding: 40px;
+      max-width: 1100px;
+      width: 100%;
+    }
+
+    .title {
+      font-size: 28px;
+      font-weight: bold;
+      color: #2c3e50;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+
+    .incident-count {
+      font-size: 18px;
+      color: #e74c3c;
+      font-weight: 600;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    #controls {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    #yearSelect {
+      font-size: 16px;
+      padding: 10px 20px;
+      border: 2px solid #667eea;
+      border-radius: 8px;
+      background: white;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      outline: none;
+    }
+
+    #yearSelect:hover {
+      border-color: #764ba2;
+      box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+    }
+
+    #yearSelect:focus {
+      border-color: #764ba2;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+    }
+
+    svg {
+      display: block;
+      margin: 0 auto;
+      background: #fafafa;
+      border-radius: 10px;
+    }
+
+    .bar {
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .bar:hover {
+      opacity: 0.85;
+      stroke: #2c3e50;
+      stroke-width: 2px;
+    }
+
+    .count-label {
+      font-size: 13px;
+      font-weight: 600;
+      fill: white;
+      pointer-events: none;
+    }
+
+    .axis-label {
+      font-size: 12px;
+      fill: #555;
+    }
+
+    .x-axis-title {
+      font-size: 14px;
+      font-weight: 600;
+      fill: #2c3e50;
+    }
+
+    .y-axis .domain,
+    .x-axis .domain {
+      stroke: #ccc;
+    }
+
+    .y-axis .tick line,
+    .x-axis .tick line {
+      stroke: #e0e0e0;
+    }
+
+    .y-axis .tick text {
+      font-size: 12px;
+      fill: #555;
+    }
+
+    .x-axis .tick text {
+      font-size: 11px;
+      fill: #666;
+    }
+
+    #loading {
+      text-align: center;
+      padding: 40px;
+      font-size: 18px;
+      color: #667eea;
+    }
+
+    #error {
+      text-align: center;
+      padding: 20px;
+      color: #e74c3c;
+      font-size: 16px;
+      background: #fee;
+      border-radius: 8px;
+      margin: 20px 0;
+      display: none;
+    }
+
+    .tooltip {
+      position: absolute;
+      padding: 12px;
+      background: rgba(0, 0, 0, 0.9);
+      color: white;
+      border-radius: 6px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s;
+      font-size: 13px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <div class="title">Top 10 Terrorist Groups by Incidents</div>
+    <div id="totalIncidents" class="incident-count"></div>
+    
+    <div id="controls">
+      <label for="yearSelect" style="font-weight: 600; margin-right: 10px; color: #555;">Select Year:</label>
+      <select id="yearSelect">
+        <option>Loading...</option>
+      </select>
+    </div>
+
+    <div id="loading">Loading data...</div>
+    <div id="error"></div>
+    <div id="chart"></div>
+  </div>
+
+  <div class="tooltip" id="tooltip"></div>
+
+  <script>
+    // Configuration
+    const margin = { top: 30, right: 40, bottom: 50, left: 200 };
+    const width = 1000 - margin.left - margin.right;
+    const height = 550 - margin.top - margin.bottom;
+
+    // Create SVG
+    const svg = d3.select("#chart")
+      .append("svg")
+      .attr("width", width + margin.left + margin.right)
+      .attr("height", height + margin.top + margin.bottom)
+      .append("g")
+      .attr("transform", `translate(${margin.left},${margin.top})`);
+
+    // Tooltip
+    const tooltip = d3.select("#tooltip");
+
+    // Scales
+    const x = d3.scaleLinear().range([0, width]);
+    const y = d3.scaleBand().range([0, height]).padding(0.15);
+    const colorScale = d3.scaleSequential(d3.interpolateReds);
+
+    // Axes groups
+    const xAxisGroup = svg.append("g")
+      .attr("class", "x-axis")
+      .attr("transform", `translate(0,${height})`);
+
+    const yAxisGroup = svg.append("g")
+      .attr("class", "y-axis");
+
+    // X-axis label
+    svg.append("text")
+      .attr("class", "x-axis-title")
+      .attr("text-anchor", "middle")
+      .attr("x", width / 2)
+      .attr("y", height + 40)
+      .text("Number of Incidents");
+
+    // Load data
+    d3.csv("region_05_clean.csv").then(function(data) {
+      
+      d3.select("#loading").style("display", "none");
+
+      // Data validation
+      if (!data || data.length === 0) {
+        showError("No data found in CSV file");
+        return;
+      }
+
+      // Clean and validate data
+      data = data.filter(d => d.gname && d.iyear);
+      data.forEach(d => d.iyear = +d.iyear);
+
+      if (data.length === 0) {
+        showError("No valid data found. Check 'gname' and 'iyear' columns.");
+        return;
+      }
+
+      // Extract unique years and sort
+      const years = Array.from(new Set(data.map(d => d.iyear))).sort((a, b) => a - b);
+
+      // Populate year dropdown
+      const yearSelect = d3.select("#yearSelect");
+      yearSelect.selectAll("option").remove();
+      
+      yearSelect.selectAll("option")
+        .data(years)
+        .enter()
+        .append("option")
+        .attr("value", d => d)
+        .text(d => d);
+
+      // Initialize with first year
+      updateChart(years[0], data, true);
+
+      // Handle year change
+      yearSelect.on("change", function() {
+        updateChart(+this.value, data, false);
+      });
+
+    }).catch(function(error) {
+      d3.select("#loading").style("display", "none");
+      showError(`Failed to load CSV file: ${error.message}`);
+    });
+
+    function updateChart(year, data, isInitial) {
+      // Filter and aggregate data
+      const filtered = data.filter(d => d.iyear === year);
+      
+      const groupCounts = d3.rollups(
+        filtered, 
+        v => v.length, 
+        d => d.gname
+      )
+      .map(([gname, count]) => ({ gname, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+      // Handle empty data
+      if (groupCounts.length === 0) {
+        svg.selectAll(".bar").remove();
+        svg.selectAll(".count-label").remove();
+        showError(`No data available for year ${year}`);
+        d3.select("#totalIncidents").text("");
+        return;
+      }
+
+      hideError();
+
+      // Calculate total incidents
+      const totalIncidents = d3.sum(groupCounts, d => d.count);
+      d3.select("#totalIncidents")
+        .text(`Total incidents in ${year}: ${totalIncidents.toLocaleString()} (Top ${groupCounts.length} groups)`);
+
+      // Update scales
+      x.domain([0, d3.max(groupCounts, d => d.count)]);
+      y.domain(groupCounts.map(d => d.gname));
+      colorScale.domain([0, d3.max(groupCounts, d => d.count)]);
+
+      // Update axes
+      xAxisGroup
+        .transition()
+        .duration(750)
+        .call(d3.axisBottom(x).ticks(6).tickFormat(d3.format("d")));
+
+      yAxisGroup
+        .transition()
+        .duration(750)
+        .call(d3.axisLeft(y));
+
+      // Bind data to bars
+      const bars = svg.selectAll(".bar")
+        .data(groupCounts, d => d.gname);
+
+      // Exit
+      bars.exit()
+        .transition()
+        .duration(500)
+        .attr("width", 0)
+        .remove();
+
+      // Update existing bars
+      bars
+        .transition()
+        .duration(750)
+        .attr("y", d => y(d.gname))
+        .attr("height", y.bandwidth())
+        .attr("width", d => x(d.count))
+        .attr("fill", d => colorScale(d.count));
+
+      // Enter new bars
+      bars.enter()
+        .append("rect")
+        .attr("class", "bar")
+        .attr("x", 0)
+        .attr("y", d => y(d.gname))
+        .attr("height", y.bandwidth())
+        .attr("width", 0)
+        .attr("fill", d => colorScale(d.count))
+        .on("mouseover", function(event, d) {
+          d3.select(this).style("opacity", 0.85);
+          tooltip
+            .style("opacity", 1)
+            .html(`<strong>${d.gname}</strong><br/>Incidents: ${d.count}`)
+            .style("left", (event.pageX + 10) + "px")
+            .style("top", (event.pageY - 28) + "px");
+        })
+        .on("mouseout", function() {
+          d3.select(this).style("opacity", 1);
+          tooltip.style("opacity", 0);
+        })
+        .transition()
+        .duration(isInitial ? 1000 : 750)
+        .delay(isInitial ? (d, i) => i * 80 : 0)
+        .attr("width", d => x(d.count));
+
+      // Count labels
+      const labels = svg.selectAll(".count-label")
+        .data(groupCounts, d => d.gname);
+
+      labels.exit()
+        .transition()
+        .duration(500)
+        .style("opacity", 0)
+        .remove();
+
+      labels
+        .transition()
+        .duration(750)
+        .attr("x", d => x(d.count) - 8)
+        .attr("y", d => y(d.gname) + y.bandwidth() / 2)
+        .text(d => d.count);
+
+      labels.enter()
+        .append("text")
+        .attr("class", "count-label")
+        .attr("x", d => x(d.count) - 8)
+        .attr("y", d => y(d.gname) + y.bandwidth() / 2)
+        .attr("dy", "0.35em")
+        .attr("text-anchor", "end")
+        .style("opacity", 0)
+        .text(d => d.count)
+        .transition()
+        .duration(isInitial ? 1000 : 750)
+        .delay(isInitial ? (d, i) => i * 80 : 0)
+        .style("opacity", 1);
+    }
+
+    function showError(message) {
+      const errorDiv = d3.select("#error");
+      errorDiv.text(message).style("display", "block");
+    }
+
+    function hideError() {
+      d3.select("#error").style("display", "none");
+    }
+  </script>
+</body>
+</html>
